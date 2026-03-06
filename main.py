@@ -11,6 +11,7 @@ import csv
 from datetime import datetime
 import os
 import ctypes
+import signal
 
 print("Starting PicoScope Spin Frequency Analyzer...")
 
@@ -207,6 +208,7 @@ class WaveformApp:
             self.scope.connect()
 
     def setup_ui(self):
+        print("Setting up UI...", flush=True)
         # Control Panel
         control_frame = ttk.LabelFrame(self.root, text="Controls")
         control_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
@@ -305,6 +307,7 @@ class WaveformApp:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        print("UI Setup complete.", flush=True)
 
     def start_scope(self):
         self.is_running = True
@@ -467,7 +470,25 @@ class WaveformApp:
 if __name__ == "__main__":
     print("Creating Tkinter root...", flush=True)
     root = tk.Tk()
+
+    # Fix for macOS window visibility
+    root.update_idletasks()
+    root.deiconify()
+    root.lift()
+    root.focus_force()
+
     app = WaveformApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
+
+    # Allow Ctrl+C to interrupt the mainloop
+    signal.signal(signal.SIGINT, lambda sig, frame: app.on_close())
+    # Periodically wake up the loop to process signals
+    def check_signals():
+        root.after(200, check_signals)
+    root.after(200, check_signals)
+
     print("Entering mainloop...", flush=True)
-    root.mainloop()
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        app.on_close()
