@@ -509,13 +509,14 @@ if __name__ == "__main__":
     app = WaveformApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
 
-    # Fix for macOS window visibility - Defer to after mainloop starts
+    # Fix for macOS/RPi window visibility - Defer to after mainloop starts
     def focus_window():
-        root.update_idletasks() # Ensure geometry handles pending resize events
-        root.deiconify()
-        root.lift()
-        root.focus_force()
-    root.after(100, focus_window)
+        try:
+            root.deiconify()
+            root.lift()
+        except:
+             pass
+    root.after(200, focus_window)
 
     # Allow Ctrl+C to interrupt the mainloop
     signal.signal(signal.SIGINT, lambda sig, frame: app.on_close())
