@@ -134,8 +134,9 @@ class RealPicoScope(ScopeInterface):
         threshold_adc = max(-32767, min(32767, threshold_adc))
 
         # ps2000_set_trigger(handle, source, threshold, direction, delay, auto_trigger_ms)
-        # source=0 (ChanA), delay=0, auto_trigger_ms=100 (wait 100ms then auto trigger if no event)
-        ps2000.ps2000_set_trigger(self.chandle, 0, threshold_adc, self.trigger_direction, 0, ctypes.c_int16(100))
+        # source=0 (ChanA), delay=0, auto_trigger_ms=1000 (wait 1s then auto trigger if no event)
+        # Increased to 1000ms to support lower frequencies (down to ~1Hz)
+        ps2000.ps2000_set_trigger(self.chandle, 0, threshold_adc, self.trigger_direction, 0, ctypes.c_int16(1000))
 
         # Setup collection
         time_interval_ns = ctypes.c_int32()
