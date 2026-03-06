@@ -6,6 +6,7 @@ import argparse
 import traceback
 import logging
 import matplotlib
+from multiprocessing import Process, Pipe
 
 # Choose backend based on environment or CLI flag (set later)
 # We'll parse args early so we can decide backend before importing pyplot
@@ -14,6 +15,8 @@ parser = argparse.ArgumentParser(description='Simple PicoScope 2000 test/capture
 parser.add_argument('--headless', '-n', action='store_true', help='Run without GUI and save plot to a file')
 parser.add_argument('--save', '-s', default='capture.png', help='Output filename when running headless')
 parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+parser.add_argument('--probe', action='store_true', help='Probe opening the PicoScope (with timeout) and exit')
+parser.add_argument('--timeout', type=int, default=10, help='Timeout seconds for probe mode')
 args, _unknown = parser.parse_known_args()
 
 # If DISPLAY is missing or --headless requested, use non-interactive backend
@@ -60,15 +63,68 @@ def get_timebase(device, wanted_time_interval):
 
     return current_timebase - 1, old_time_interval
 
+
+# Add a probe helper that tries to open the device in a separate process and reports back via a pipe.
+def _child_probe(conn):
+    try:
+        from picosdk.ps2000 import ps2000 as _ps2000
+        with _ps2000.open_unit() as dev:
+            conn.send(("ok", str(dev.info)))
+    except Exception as e:
+        import traceback as _tb
+        conn.send(("error", _tb.format_exc()))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def probe_open_unit(timeout_sec=10):
+    parent_conn, child_conn = Pipe()
+    p = Process(target=_child_probe, args=(child_conn,))
+    p.start()
+    try:
+        if parent_conn.poll(timeout_sec):
+            status, payload = parent_conn.recv()
+            p.join()
+            return status, payload
+        else:
+            # timed out
+            p.terminate()
+            p.join()
+            return "timeout", f"open_unit did not return within {timeout_sec}s"
+    finally:
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 logger.info("Starting test using ps2000.open_unit()...")
 
+# If user only wants to probe opening the device, do that and exit early
+if args.probe:
+    logger.info('Running probe_open_unit with timeout %s seconds...', args.timeout)
+    status, payload = probe_open_unit(args.timeout)
+    if status == 'ok':
+        logger.info('Probe successful: %s', payload)
+        sys.exit(0)
+    elif status == 'error':
+        logger.error('Probe failed with exception:\n%s', payload)
+        sys.exit(2)
+    else:
+        logger.error('%s', payload)
+        logger.error('If this is a permissions issue, try running with sudo as a quick check or add a udev rule.')
+        sys.exit(3)
+
 try:
+    logger.info('Attempting to open the device (this may block if the binding waits for the device)...')
     with ps2000.open_unit() as device:
-        logger.info('Device info: %s', device.info)
+        logger.info('Opened device: %s', device.info)
 
         res = ps2000.ps2000_set_channel(
             device.handle,
