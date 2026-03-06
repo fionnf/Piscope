@@ -1,7 +1,28 @@
 from ctypes import byref, c_byte, c_int16, c_int32, sizeof
 from time import sleep
+import os
+import sys
+import argparse
+import traceback
+import logging
 import matplotlib
-matplotlib.use('TkAgg')
+
+# Choose backend based on environment or CLI flag (set later)
+# We'll parse args early so we can decide backend before importing pyplot
+
+parser = argparse.ArgumentParser(description='Simple PicoScope 2000 test/capture script')
+parser.add_argument('--headless', '-n', action='store_true', help='Run without GUI and save plot to a file')
+parser.add_argument('--save', '-s', default='capture.png', help='Output filename when running headless')
+parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+args, _unknown = parser.parse_known_args()
+
+# If DISPLAY is missing or --headless requested, use non-interactive backend
+if args.headless or os.environ.get('DISPLAY', '') == '':
+    matplotlib.use('Agg')
+else:
+    # prefer TkAgg when a display is available
+    matplotlib.use('TkAgg')
+
 import matplotlib.pyplot as plt
 
 from picosdk.ps2000 import ps2000
@@ -39,11 +60,15 @@ def get_timebase(device, wanted_time_interval):
 
     return current_timebase - 1, old_time_interval
 
-print("Starting test using ps2000.open_unit()...")
+# Configure logging
+logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
+logger.info("Starting test using ps2000.open_unit()...")
 
 try:
     with ps2000.open_unit() as device:
-        print('Device info: {}'.format(device.info))
+        logger.info('Device info: %s', device.info)
 
         res = ps2000.ps2000_set_channel(
             device.handle,
@@ -115,10 +140,27 @@ try:
         if channel_a_overflow:
             ax.text(0.01, 0.01, 'Overflow present', color='red', transform=ax.transAxes)
 
-        print("Showing plot...")
-        plt.show()
-        print("Done.")
+        if args.headless or os.environ.get('DISPLAY', '') == '':
+            out = args.save
+            logger.info('Headless mode - saving figure to %s', out)
+            fig.savefig(out)
+            logger.info('Saved to %s', out)
+        else:
+            logger.info('Showing plot...')
+            plt.show()
+            logger.info('Done.')
 
 except Exception as e:
-    print(f"An error occurred: {e}")
+    logger.error('An error occurred while talking to the PicoScope device: %s', e)
+    # Print full traceback for diagnostics
+    traceback.print_exc()
 
+    # Helpful diagnostic hints for common issues on Linux/Raspberry Pi
+    sys.stderr.write('\nDiagnostic hints:\n')
+    sys.stderr.write('- Is the PicoScope connected and visible via `lsusb`? You should see vendor:product 0ce9:1007 for many 2000-series devices.\n')
+    sys.stderr.write('- If `lsusb` shows the device but the script cannot open it, you may need a udev rule to give non-root USB access. Example rule (create /etc/udev/rules.d/99-picoscope.rules):\n')
+    sys.stderr.write('  SUBSYSTEM=="usb", ATTR{idVendor}=="0ce9", ATTR{idProduct}=="1007", MODE="0666", GROUP="plugdev", SYMLINK+="picoscope%n"\n')
+    sys.stderr.write('- After adding the rule, run: sudo udevadm control --reload-rules && sudo udevadm trigger && unplug/replug the device.\n')
+    sys.stderr.write('- As a quick test you can try running the script with sudo to see if it is a permissions issue (not recommended as a permanent fix).\n')
+    sys.stderr.write('- Ensure libusb is available and that no other process is holding the device.\n')
+    sys.exit(1)
