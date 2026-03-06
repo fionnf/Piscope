@@ -87,15 +87,22 @@ class RealPicoScope(ScopeInterface):
         if not PICOSDK_AVAILABLE:
             return False
 
-        # Open the unit
-        self.status["openunit"] = ps2000.ps2000_open_unit()
+        print("RealPicoScope: Calling ps2000_open_unit...", flush=True)
+        try:
+            # Open the unit
+            self.status["openunit"] = ps2000.ps2000_open_unit()
+            print(f"RealPicoScope: ps2000_open_unit returned {self.status['openunit']}", flush=True)
+        except Exception as e:
+            print(f"RealPicoScope: Exception during open_unit: {e}", flush=True)
+            return False
+
         self.chandle = ctypes.c_int16(self.status["openunit"])
 
         if self.chandle.value > 0:
-            print(f"PicoScope Connected. Handle: {self.chandle.value}")
+            print(f"PicoScope Connected. Handle: {self.chandle.value}", flush=True)
             return True
         else:
-            print("Failed to open PicoScope")
+            print("Failed to open PicoScope (Handle <= 0)", flush=True)
             return False
 
     def disconnect(self):
