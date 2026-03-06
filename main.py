@@ -12,6 +12,7 @@ from datetime import datetime
 import os
 import ctypes
 import signal
+import sys
 
 print("Starting PicoScope Spin Frequency Analyzer...")
 
@@ -181,6 +182,7 @@ class WaveformApp:
     def __init__(self, root):
         self.root = root
         self.root.title("PicoScope Spin Frequency Analyzer")
+        self.root.geometry("1000x700")
 
         self.scope = None
         self.is_running = False
@@ -188,24 +190,45 @@ class WaveformApp:
 
         self.setup_ui()
 
-        # Initialize scope
+        # Start scope initialization in a background thread
+        self.log_var.set("Status: Connecting to Scope...")
+        self.start_btn.config(state=tk.DISABLED)
+        threading.Thread(target=self.async_init_scope, daemon=True).start()
+
+    def async_init_scope(self):
+        print("Attempting to connect to scope in background...", flush=True)
+        scope_to_use = None
+
         if PICOSDK_AVAILABLE:
-            # We need ctypes for real scope
-            global ctypes
-            import ctypes
             try:
-                self.scope = RealPicoScope()
-                if not self.scope.connect():
-                    print("Could not connect to real scope, falling back to mock.")
-                    self.scope = MockScope()
-                    self.scope.connect()
+                real_scope = RealPicoScope()
+                if real_scope.connect():
+                    print("Connected to RealPicoScope.", flush=True)
+                    scope_to_use = real_scope
+                else:
+                    print("Could not connect to real scope, falling back to mock.", flush=True)
             except Exception as e:
-                print(f"Error initializing real scope: {e}")
-                self.scope = MockScope()
-                self.scope.connect()
-        else:
-            self.scope = MockScope()
-            self.scope.connect()
+                print(f"Error initializing real scope: {e}", flush=True)
+
+        if scope_to_use is None:
+            print("Using Mock Scope.", flush=True)
+            scope_to_use = MockScope()
+            scope_to_use.connect()
+
+        self.scope = scope_to_use
+
+        # Update UI in main thread
+        def on_connected():
+            if not self.root: return
+            self.log_var.set("Status: Ready")
+            self.start_btn.config(state=tk.NORMAL)
+            print("Scope initialized and ready.", flush=True)
+
+        try:
+            self.root.after(0, on_connected)
+        except:
+            pass
+
 
     def setup_ui(self):
         print("Setting up UI...", flush=True)
@@ -440,7 +463,11 @@ class WaveformApp:
                     freq = 0
 
                 # Update UI (thread safe call)
-                self.root.after(0, self.update_plot, t, y, freq)
+                try:
+                    self.root.after(0, self.update_plot, t, y, freq)
+                except Exception:
+                    pass # Window likely destroyed, ignore
+
 
                 # Log data
                 if self.log_file:
@@ -466,6 +493,7 @@ class WaveformApp:
         if self.scope:
             self.scope.disconnect()
         self.root.destroy()
+        sys.exit(0) # Force exit
 
 if __name__ == "__main__":
     print("Creating Tkinter root...", flush=True)
