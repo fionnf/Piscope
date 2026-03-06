@@ -476,6 +476,7 @@ if __name__ == "__main__":
 
     # Fix for macOS window visibility - Defer to after mainloop starts
     def focus_window():
+        root.update_idletasks() # Ensure geometry handles pending resize events
         root.deiconify()
         root.lift()
         root.focus_force()
