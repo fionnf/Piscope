@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import matplotlib
+matplotlib.use('TkAgg') # Explicitly set backend for RPi
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
@@ -462,7 +464,9 @@ class WaveformApp:
         self.root.destroy()
 
 if __name__ == "__main__":
+    print("Creating Tkinter root...", flush=True)
     root = tk.Tk()
     app = WaveformApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
+    print("Entering mainloop...", flush=True)
     root.mainloop()
