@@ -197,12 +197,41 @@ class WaveformApp:
 
         self.setup_ui()
 
-        # Start scope initialization in a background thread
-        print("Starting async scope init thread...", flush=True)
+        # Start scope initialization with timeout logic
         self.log_var.set("Status: Connecting to Scope...")
         self.start_btn.config(state=tk.DISABLED)
+
+        self.connection_start_time = time.time()
+        self.connecting_flag = True
+
         threading.Thread(target=self.async_init_scope, daemon=True).start()
-        print("Main init complete.", flush=True)
+        self.root.after(1000, self.check_connection_timeout)
+
+    def check_connection_timeout(self):
+        if not self.connecting_flag:
+            return # Connection resolved (either success or failure)
+
+        elapsed = time.time() - self.connection_start_time
+        if elapsed > 8.0: # 8 seconds timeout
+            print("Connection timed out. Drivers might be missing or device stuck.", flush=True)
+            self.connecting_flag = False
+
+            # Fallback to Mock
+            print("Falling back to Mock Scope due to timeout.", flush=True)
+            self.scope = MockScope()
+            self.scope.connect()
+            self.log_var.set("Status: Ready (Simulation - Driver Timeout)")
+            self.start_btn.config(state=tk.NORMAL)
+            messagebox.showwarning("Connection Timeout",
+                "Could not connect to PicoScope within 8 seconds.\n"
+                "The app has switched to Simulation Mode.\n\n"
+                "Possible causes:\n"
+                "1. Drivers not installed (install libps2000).\n"
+                "2. USB permissions (try running with sudo).\n"
+                "3. Device not plugged in.")
+        else:
+            # Check again in 1 second
+            self.root.after(1000, self.check_connection_timeout)
 
     def async_init_scope(self):
         print("Attempting to connect to scope in background...", flush=True)
@@ -215,29 +244,48 @@ class WaveformApp:
                     print("Connected to RealPicoScope.", flush=True)
                     scope_to_use = real_scope
                 else:
-                    print("Could not connect to real scope, falling back to mock.", flush=True)
+                    print("Connection failed or no device found. Falling back to Mock.", flush=True)
             except Exception as e:
                 print(f"Error initializing real scope: {e}", flush=True)
+        else:
+            print("PicoSDK not available (ImportError). Using Mock.", flush=True)
 
         if scope_to_use is None:
-            print("Using Mock Scope.", flush=True)
-            scope_to_use = MockScope()
-            scope_to_use.connect()
+            # Only use Mock if we didn't get a real scope (and not timed out yet)
+            pass
+            # If we failed to get real scope immediately, we fall back to Mock
+            # BUT if we are hanging in connect(), we never reach here.
 
-        self.scope = scope_to_use
+        # If we reached here, we have a result (Success or Explicit Failure)
 
-        # Update UI in main thread
-        def on_connected():
+        def on_connected(resolved_scope):
             if not self.root: return
-            self.log_var.set("Status: Ready")
+            if not self.connecting_flag:
+                # We already timed out
+                if resolved_scope and isinstance(resolved_scope, RealPicoScope):
+                    print("closing late-arriving real scope", flush=True)
+                    resolved_scope.disconnect()
+                return
+
+            self.connecting_flag = False
+
+            if resolved_scope is None:
+                 print("Using Mock Scope due to connection failure.", flush=True)
+                 resolved_scope = MockScope()
+                 resolved_scope.connect()
+
+            self.scope = resolved_scope
+
+            is_real = isinstance(self.scope, RealPicoScope)
+            status = "Ready (Real Scope)" if is_real else "Ready (Simulation)"
+            self.log_var.set(f"Status: {status}")
             self.start_btn.config(state=tk.NORMAL)
-            print("Scope initialized and ready.", flush=True)
+            print(f"Scope initialized: {status}", flush=True)
 
         try:
-            self.root.after(0, on_connected)
-        except:
-            pass
-
+            self.root.after(0, on_connected, scope_to_use)
+        except Exception as e:
+            print(f"Error scheduling UI update: {e}", flush=True)
 
     def setup_ui(self):
         print("Setting up UI...", flush=True)
