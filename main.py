@@ -198,9 +198,11 @@ class WaveformApp:
         self.setup_ui()
 
         # Start scope initialization in a background thread
+        print("Starting async scope init thread...", flush=True)
         self.log_var.set("Status: Connecting to Scope...")
         self.start_btn.config(state=tk.DISABLED)
         threading.Thread(target=self.async_init_scope, daemon=True).start()
+        print("Main init complete.", flush=True)
 
     def async_init_scope(self):
         print("Attempting to connect to scope in background...", flush=True)
