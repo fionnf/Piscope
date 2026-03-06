@@ -367,7 +367,7 @@ class WaveformApp:
         if self.log_file:
             self.log_file.close()
             self.log_file = None
-        self.log_var.set("Logging: Stopped")
+        self.log_var.set("Status: Ready (Logging Stopped)")
         self.log_start_btn.config(state=tk.NORMAL)
         self.log_stop_btn.config(state=tk.DISABLED)
 
