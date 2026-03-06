@@ -471,14 +471,15 @@ if __name__ == "__main__":
     print("Creating Tkinter root...", flush=True)
     root = tk.Tk()
 
-    # Fix for macOS window visibility
-    root.update_idletasks()
-    root.deiconify()
-    root.lift()
-    root.focus_force()
-
     app = WaveformApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
+
+    # Fix for macOS window visibility - Defer to after mainloop starts
+    def focus_window():
+        root.deiconify()
+        root.lift()
+        root.focus_force()
+    root.after(100, focus_window)
 
     # Allow Ctrl+C to interrupt the mainloop
     signal.signal(signal.SIGINT, lambda sig, frame: app.on_close())

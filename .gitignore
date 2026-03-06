@@ -1,0 +1,13 @@
+# Log files
+spin_log_*.csv
+*.csv
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
+
